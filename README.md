@@ -1,4 +1,4 @@
-# Documentação Detalhada do Script de Conversação com Documentos Markdown
+# RAG
 
 Este documento explica, passo a passo, como funciona o script que realiza a seguinte tarefa:
 - Carrega arquivos Markdown de um diretório.
