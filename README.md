@@ -1,230 +1,141 @@
-# RAG
+# 🧠 RAG with Gemini (Simple Implementation)
 
-Este documento explica, passo a passo, como funciona o script que realiza a seguinte tarefa:
-- Carrega arquivos Markdown de um diretório.
-- Processa esses arquivos para gerar embeddings (vetores numéricos) utilizando a API do OpenAI.
-- Indexa esses embeddings com FAISS para realizar buscas semânticas eficientes.
-- Configura um agente conversacional (RAG) que utiliza os documentos indexados para responder perguntas do usuário.
+> 📚 **Original source:** Adapted from an educational RAG project by [Asimov Academy](https://github.com/asimov-academy/rag-in-practice)  
+> 🧠 This version was modified to use **Google Gemini API** directly (without LangChain)  
+> 📄 Licensed under MIT License (see [LICENSE](LICENSE) file)
 
-Além disso, esta documentação detalha como configurar o ambiente, incluindo a criação do arquivo `.env` na raiz do projeto para armazenar variáveis sensíveis (por exemplo, a chave da API do OpenAI).
+**Read in**: [English](README.md) | [Portuguese](README.pt-BR.md)
 
 ---
 
-## 1. Requisitos e Dependências
+## 🇺🇸 English Version
 
-Para executar este script, você precisará ter instaladas as seguintes bibliotecas (com as versões indicadas):
+### 🧩 1. Requirements
 
-- **Python:** `^3.12`
-- **streamlit:** `^1.42.0`
-- **langchain:** `^0.3.18`
-- **langchain-openai:** `^0.3.5`
-- **python-dotenv:** `^1.0.1`
-- **langchain-community:** `0.3.16`
-- **numpy:** `^1.23.5`
-- **unstructured:** `^0.16.21`
-- **faiss-cpu:** `^1.10.0`
-- **openai:** `^1.63.2`
-- **markdown:** `^3.7`
-- **langchain-cli:** `^0.0.35`
-
-### Exemplo de instalação via pip:
+- **Python**: >=3.12
+- **Libraries**:
 
 ```bash
-pip install python-dotenv streamlit langchain langchain-openai langchain-community numpy unstructured faiss-cpu openai markdown langchain-cli
+pip install -U google-genai faiss-cpu python-dotenv numpy
 ```
 
 ---
 
-## 2. Configuração do Arquivo de Ambiente (.env)
+### 🔐 2. Environment Setup
 
-Para garantir que o script funcione corretamente, é necessário criar um arquivo de ambiente chamado `.env` na raiz do projeto. Esse arquivo armazenará variáveis sensíveis, como a chave de API do OpenAI, sem que elas fiquem diretamente no código-fonte.
+Create a `.env` file in the project root with your Google API key:
 
-### Passos para criar e configurar o arquivo `.env`:
+```env
+GOOGLE_API_KEY=your-api-key-here
+```
 
-1. **Crie o arquivo:**
-   - Na raiz do seu projeto (ou seja, no mesmo diretório onde está o script Python), crie um novo arquivo com o nome:
-     ```
-     .env
-     ```
+Or use:
 
-2. **Defina as variáveis de ambiente:**
-   - Abra o arquivo `.env` em um editor de texto e adicione a(s) variável(is) necessárias. Por exemplo, para a chave da API do OpenAI, adicione:
-     ```env
-     OPENAI_API_KEY=your-api-key-aqui
-     ```
-   - Substitua `your-api-key-aqui` pela sua chave real da API do OpenAI.
+```env
+GEMINI_API_KEY=your-api-key-here
+```
 
-3. **Utilização no Script:**
-   - No início do script, a biblioteca `python-dotenv` é utilizada para carregar essas variáveis:
-     ```python
-     from dotenv import load_dotenv
-     load_dotenv()
-     ```
-   - Assim, a variável `OPENAI_API_KEY` (ou outras que você definir) estará disponível para uso no script sem precisar codificá-la diretamente.
+🔑 **Get your key at**: [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ---
 
-## 3. Estrutura do Script
+### 📁 3. Document Structure
 
-A seguir, uma explicação detalhada de cada parte do script.
-
-### 3.1 Configuração Inicial e Importação das Dependências
-
-**Objetivo:**  
-Carregar as variáveis de ambiente e importar as bibliotecas necessárias para:
-- Carregar e processar os arquivos Markdown.
-- Gerar embeddings via OpenAI.
-- Indexar os embeddings com FAISS.
-- Configurar o agente conversacional para interação.
-
-**Código:**
-
-```python
-from dotenv import load_dotenv  # Carrega variáveis de ambiente do arquivo .env
-from langchain_community.document_loaders import DirectoryLoader  # Carrega arquivos de um diretório
-from langchain_community.document_loaders import UnstructuredMarkdownLoader  # Processa arquivos Markdown
-from langchain_openai.embeddings import OpenAIEmbeddings  # Converte textos em vetores utilizando a API do OpenAI
-from langchain_community.vectorstores import FAISS  # Cria um índice vetorial para busca semântica
-from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain  # Combina recuperação de documentos e conversação
-from langchain_openai.chat_models import ChatOpenAI  # Modelo de chat baseado na API do OpenAI
-
-# Carrega as variáveis de ambiente definidas no arquivo .env
-load_dotenv()
-```
-
-### 3.2 Carregamento dos Documentos Markdown
-
-**Objetivo:**  
-Localizar e carregar recursivamente arquivos Markdown a partir de um diretório especificado.
-
-**Código:**
-
-```python
-# Define o caminho para a pasta que contém os arquivos Markdown
-pasta_dos_md = r"/home/samuel/Samuel Sublate/"  # Atualize conforme a localização dos seus arquivos
-
-# Cria um DirectoryLoader para buscar recursivamente por arquivos .md
-loader = DirectoryLoader(
-    pasta_dos_md,
-    glob="**/*.md",  # Padrão que abrange todos os arquivos com extensão .md, inclusive em subdiretórios
-    loader_cls=UnstructuredMarkdownLoader  # Processa cada arquivo Markdown
-)
-
-# Carrega os documentos encontrados e armazena na variável 'docs'
-docs = loader.load()
-print(f"{len(docs)} arquivos Markdown carregados.")
-```
-
-**Detalhes Importantes:**
-- **pasta_dos_md:** Caminho absoluto ou relativo para o diretório onde os arquivos Markdown estão armazenados.
-- **DirectoryLoader:** Realiza uma busca recursiva com base no padrão definido (`**/*.md`).
-- **UnstructuredMarkdownLoader:** Lida com a formatação dos arquivos Markdown, extraindo o conteúdo textual.
-
-### 3.3 Criação do Índice Vetorial (Embeddings e FAISS)
-
-**Objetivo:**  
-Converter o conteúdo dos documentos em embeddings e indexá-los com FAISS para buscas semânticas.
-
-**Código:**
-
-```python
-# Cria embeddings dos documentos utilizando a API do OpenAI
-embeddings = OpenAIEmbeddings()
-
-# Indexa os documentos com FAISS para realizar buscas eficientes
-vector_store = FAISS.from_documents(docs, embeddings)
-```
-
-**Detalhes Importantes:**
-- **OpenAIEmbeddings:** Responsável por transformar textos em vetores numéricos, permitindo a comparação semântica.
-- **FAISS:** Biblioteca de indexação vetorial que facilita a busca dos documentos mais relevantes para uma dada consulta.
-
-### 3.4 Configuração do Agente Conversacional (RAG)
-
-**Objetivo:**  
-Integrar o modelo de chat com o mecanismo de recuperação de documentos para responder às perguntas do usuário.
-
-**Código:**
-
-```python
-# Inicializa o modelo de chat do OpenAI com temperatura 0 para respostas determinísticas
-chat_model = ChatOpenAI(temperature=0)
-
-# Cria uma cadeia conversacional que utiliza o modelo de chat e o índice FAISS para recuperação de documentos
-qa_chain = ConversationalRetrievalChain.from_llm(
-    llm=chat_model,
-    retriever=vector_store.as_retriever(),
-)
-```
-
-**Detalhes Importantes:**
-- **ChatOpenAI:** Configurado com uma temperatura baixa para garantir respostas mais consistentes.
-- **ConversationalRetrievalChain:** Combina a capacidade do modelo de linguagem com a busca nos documentos indexados, possibilitando respostas fundamentadas no conteúdo dos Markdown.
-
-### 3.5 Interação com o Usuário
-
-**Objetivo:**  
-Permitir a interação via terminal, onde o usuário envia uma consulta e recebe a resposta do agente.
-
-**Código:**
-
-```python
-print("Converse com o agente (digite 'sair' para encerrar):")
-while True:
-    print('\n')
-    # Recebe a consulta do usuário via terminal
-    query = input("Você:")
-
-    # Encerra o loop se o usuário digitar 'sair', 'exit' ou 'quit'
-    if query.lower() in ["sair", "exit", "quit"]:
-        break
-
-    # Envia a consulta e um histórico de conversa vazio para a cadeia conversacional
-    result = qa_chain({"question": query, "chat_history": []})
-    print('\n')
-    # Exibe a resposta gerada pelo agente
-    print("Agente:", result["answer"])
-```
-
-**Detalhes Importantes:**
-- **Loop Interativo:** Permite múltiplas interações até que o usuário opte por sair.
-- **chat_history:** Inicialmente é uma lista vazia. Em aplicações avançadas, pode ser utilizada para manter o contexto da conversa.
+Place your Markdown (`.md`) files inside the `docs/` folder. The script will:
+- Load all `.md` files recursively
+- Split them into chunks
+- Generate embeddings using `gemini-embedding-001`
+- Index with FAISS for semantic search
 
 ---
 
-## 4. Estrutura do Projeto
+### ⚙️ 4. How to Run
 
-Uma estrutura básica do projeto pode ser semelhante a esta:
+**Activate virtual environment (Windows):**
+
+```bash
+python -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\activate
+```
+
+**Install dependencies:**
+
+```bash
+pip install -U google-genai faiss-cpu python-dotenv numpy
+```
+
+**Run the script:**
+
+```bash
+python rag_simple_genai.py
+```
+
+**Interact with the assistant:**
 
 ```
-meu_projeto/
-├── .env
-├── script.py
-└── README.md
+You: What does this document explain?
+Agent AI: [Answer based on retrieved context with source citations]
 ```
 
-- **.env:** Arquivo de configuração com variáveis de ambiente.
-- **script.py:** Contém o código do script explicado nesta documentação.
-- **README.md:** Este arquivo de documentação.
+Type `quit`, `exit`, or `sair` to stop.
 
 ---
 
-## 5. Conclusão
+### 💡 5. How It Works
 
-Este script integra diversas tecnologias para transformar documentos Markdown em uma base de conhecimento consultável através de um agente conversacional. Através das etapas de:
-- Configuração do ambiente (usando um arquivo `.env`),
-- Carregamento e processamento dos arquivos Markdown,
-- Criação de embeddings e indexação com FAISS,
-- Configuração do agente conversacional (RAG) e
-- Interação via terminal,
-
-você pode criar uma aplicação robusta que responde perguntas com base no conteúdo dos seus documentos.
-
-Certifique-se de:
-1. **Criar e configurar o arquivo `.env`** na raiz do projeto com as variáveis necessárias (por exemplo, `OPENAI_API_KEY`).
-2. **Instalar as dependências** com as versões recomendadas.
-3. **Ajustar os caminhos** e demais configurações conforme a estrutura do seu ambiente.
-
-Experimente, teste e expanda o script conforme suas necessidades!
+1. **Document Loading**: Reads all `.md` files from `docs/` folder
+2. **Chunking**: Splits documents into overlapping chunks (default: 1200 chars with 200 overlap)
+3. **Embedding Generation**: Uses `gemini-embedding-001` model to vectorize chunks
+4. **FAISS Indexing**: Creates a vector index for fast similarity search
+5. **Query Processing**: 
+   - Embeds user query
+   - Retrieves top-K similar chunks (default: 4)
+   - Builds context-aware prompt with chat history
+6. **Answer Generation**: Uses `gemini-2.5-flash` model to generate responses
+7. **Source Attribution**: Shows which document chunks were used
 
 ---
+
+### 🔧 6. Configuration
+
+Edit these constants in `rag_simple_genai.py`:
+
+```python
+DOCS_PATH = "./docs"              # Path to markdown files
+CHUNK_SIZE = 1200                 # Characters per chunk
+CHUNK_OVERLAP = 200               # Overlap between chunks
+EMBEDDING_MODEL = "gemini-embedding-001"
+GENERATION_MODEL = "gemini-2.5-flash"
+TOP_K = 4                         # Number of snippets to retrieve
+```
+
+---
+
+### 📖 7. Credits & References
+
+- **Original project**: [Asimov Academy - RAG in Practice](https://github.com/asimov-academy/rag-in-practice)
+- **Adapted by**: Using Google Gemini API directly via `google-genai` SDK
+- **Key technologies**:
+  - `google-genai`: Official Google Generative AI Python client
+  - `faiss-cpu`: Vector similarity search
+  - `numpy`: Numerical operations
+
+---
+
+### 📄 8. License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+Original work Copyright (c) 2025 Asimov Academy  
+Modifications and adaptations are also covered under MIT License.
+
+---
+
+### 🚀 9. Next Steps
+
+- Add more documents to `docs/` folder
+- Adjust chunk size and overlap for your use case
+- Experiment with different Gemini models
+- Implement persistent storage for embeddings
+- Add web interface with Streamlit or Gradio
